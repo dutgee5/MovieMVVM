@@ -59,136 +59,117 @@ import kotlin.time.Duration.Companion.seconds
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MovieListScreen(
-  onBackClick: () -> Unit,
-  onMovieClick: (movieId: String) -> Unit,
-  modifier: Modifier = Modifier,
+    uiState: MovieListUiState,
+    onSearchQueryChange: (query: String) -> Unit,
+    onBackClick: () -> Unit,
+    onMovieClick: (movieId: String) -> Unit,
+    onRetryClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-  var searchQuery by rememberSaveable { mutableStateOf("") }
-
-  var reproducer by remember { mutableStateOf(0) }
-
-  val movies: UiState<List<Movie>> by
-    produceState<UiState<List<Movie>>>(initialValue = UiState.Loading, reproducer) {
-      value = UiState.Loading
-      delay(1.seconds)
-      if (Random.nextBoolean()) {
-        value = UiState.Failure(RuntimeException("Network error"))
-        return@produceState
-      }
-      val jsonString = Res.readBytes("files/movies.json").decodeToString()
-      val movieList: List<Movie> = Json.decodeFromString(jsonString)
-      value = UiState.Success(movieList)
-    }
-
-  val queriedMovies: UiState<List<Movie>> =
-    remember(searchQuery, movies) {
-      if (searchQuery.isBlank()) {
-        movies
-      } else {
-        movies.map { movieList ->
-          movieList.filter { it.title.contains(searchQuery, ignoreCase = true) }
-        }
-      }
-    }
-
-  Scaffold(
-    topBar = {
-      CenterAlignedTopAppBar(
-        title = { Text(text = stringResource(Res.string.movie_list_title)) },
-        navigationIcon = {
-          IconButton(onClick = onBackClick) {
-            Icon(
-              imageVector = ArrowBack,
-              contentDescription = stringResource(Res.string.back_icon_content_description),
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text(text = stringResource(Res.string.movie_list_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = ArrowBack,
+                            contentDescription = stringResource(Res.string.back_icon_content_description),
+                        )
+                    }
+                },
             )
-          }
         },
-      )
-    },
-    modifier = modifier,
-  ) { padding ->
-    Column(
-      horizontalAlignment = Alignment.CenterHorizontally,
-      modifier =
-        Modifier.fillMaxSize()
-          .padding(
-            top = padding.calculateTopPadding(),
-            start = padding.calculateStartPadding(LocalLayoutDirection.current),
-            end = padding.calculateEndPadding(LocalLayoutDirection.current),
-          ),
-    ) {
-      TextField(
-        value = searchQuery,
-        onValueChange = { searchQuery = it },
-        label = { Text(text = stringResource(Res.string.movie_list_search_label)) },
-        trailingIcon = {
-          Icon(
-            imageVector = Search,
-            contentDescription = stringResource(Res.string.search_icon_content_description),
-          )
-        },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-      )
-
-      when (val currentQueriedMovies: UiState<List<Movie>> = queriedMovies) {
-        UiState.Loading -> {
-          Box(contentAlignment = Alignment.Center, modifier = Modifier.weight(1f)) {
-            CircularProgressIndicator()
-          }
-        }
-        is UiState.Failure -> {
-          Column(
-            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+        modifier = modifier,
+    ) { padding ->
+        Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.weight(1f),
-          ) {
-            Text(text = stringResource(Res.string.movie_list_fetch_failure))
+            modifier =
+                Modifier.fillMaxSize()
+                    .padding(
+                        top = padding.calculateTopPadding(),
+                        start = padding.calculateStartPadding(LocalLayoutDirection.current),
+                        end = padding.calculateEndPadding(LocalLayoutDirection.current),
+                    ),
+        ) {
+            TextField(
+                value = uiState.searchQuery,
+                onValueChange = onSearchQueryChange,
+                label = { Text(text = stringResource(Res.string.movie_list_search_label)) },
+                trailingIcon = {
+                    Icon(
+                        imageVector = Search,
+                        contentDescription = stringResource(Res.string.search_icon_content_description),
+                    )
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            )
 
-            OutlinedButton(onClick = { reproducer++ }) {
-              Text(text = stringResource(Res.string.retry_button))
+            when (val currentQueriedMovies: UiState<List<Movie>> = uiState.movies) {
+                UiState.Loading -> {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.weight(1f)) {
+                        CircularProgressIndicator()
+                    }
+                }
+
+                is UiState.Failure -> {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(
+                            8.dp,
+                            Alignment.CenterVertically
+                        ),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(text = stringResource(Res.string.movie_list_fetch_failure))
+
+                        OutlinedButton(onClick = onRetryClick) {
+                            Text(text = stringResource(Res.string.retry_button))
+                        }
+                    }
+                }
+
+                is UiState.Success -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 180.dp),
+                        contentPadding =
+                            PaddingValues(
+                                top = 16.dp,
+                                start = 16.dp + padding.calculateStartPadding(LocalLayoutDirection.current),
+                                end = 16.dp + padding.calculateEndPadding(LocalLayoutDirection.current),
+                                bottom = 16.dp + padding.calculateBottomPadding(),
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        items(currentQueriedMovies.data, key = { it.id }) { movie ->
+                            MovieCell(
+                                movie = movie,
+                                onClick = { onMovieClick(movie.id) },
+                                modifier = Modifier.animateItem(),
+                            )
+                        }
+                    }
+                }
             }
-          }
         }
-        is UiState.Success -> {
-          LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 180.dp),
-            contentPadding =
-              PaddingValues(
-                top = 16.dp,
-                start = 16.dp + padding.calculateStartPadding(LocalLayoutDirection.current),
-                end = 16.dp + padding.calculateEndPadding(LocalLayoutDirection.current),
-                bottom = 16.dp + padding.calculateBottomPadding(),
-              ),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.weight(1f),
-          ) {
-            items(currentQueriedMovies.data, key = { it.id }) { movie ->
-              MovieCell(
-                movie = movie,
-                onClick = { onMovieClick(movie.id) },
-                modifier = Modifier.animateItem(),
-              )
-            }
-          }
-        }
-      }
     }
-  }
 }
 
 @Composable
 private fun MovieCell(movie: Movie, onClick: () -> Unit, modifier: Modifier = Modifier) {
-  Column(
-    horizontalAlignment = Alignment.CenterHorizontally,
-    modifier = modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onClick),
-  ) {
-    AsyncImage(
-      model = movie.posterUrl,
-      contentDescription = movie.title,
-      modifier = Modifier.fillMaxWidth().aspectRatio(2 / 3f).clip(MaterialTheme.shapes.medium),
-    )
-    Text(movie.title, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleSmall)
-  }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier.clip(MaterialTheme.shapes.medium).clickable(onClick = onClick),
+    ) {
+        AsyncImage(
+            model = movie.posterUrl,
+            contentDescription = movie.title,
+            modifier = Modifier.fillMaxWidth().aspectRatio(2 / 3f)
+                .clip(MaterialTheme.shapes.medium),
+        )
+        Text(movie.title, textAlign = TextAlign.Center, style = MaterialTheme.typography.titleSmall)
+    }
 }
